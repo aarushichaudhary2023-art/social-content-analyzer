@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scanline — Social Media Content Analyzer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="grain"></div>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark">◈</span>
+    <span class="brand-name">Scanline</span>
+  </div>
+  <p class="brand-tag">document → readout → engagement report</p>
+</header>
+
+<main>
+
+  <section class="hero">
+    <h1 class="hero-title">Feed it a post.<br>Get back a scan report.</h1>
+    <p class="hero-sub">Drop a PDF or a photo of your caption. We pull the text off the page and mark up what's helping — and what's holding back — engagement.</p>
+
+    <div class="scanbed" id="dropzone">
+      <span class="bracket tl"></span>
+      <span class="bracket tr"></span>
+      <span class="bracket bl"></span>
+      <span class="bracket br"></span>
+
+      <div class="scanbed-inner" id="scanbedInner">
+        <div class="scan-icon">⌗</div>
+        <p class="scan-instruction">Drag a file onto the bed, or</p>
+        <label class="pick-btn" for="fileInput">choose a file</label>
+        <input type="file" id="fileInput" accept=".pdf,.png,.jpg,.jpeg,.webp,.bmp" hidden>
+        <p class="scan-formats">PDF · PNG · JPG · WEBP · BMP — up to 15MB</p>
+      </div>
+
+      <div class="scan-sweep" id="scanSweep" hidden></div>
+    </div>
+
+    <p class="filename-row" id="filenameRow" hidden></p>
+  </section>
+
+  <section class="status" id="statusPanel" hidden>
+    <div class="status-line">
+      <span class="status-dot" id="statusDot"></span>
+      <span id="statusText">Reading document…</span>
+    </div>
+  </section>
+
+  <section class="report" id="report" hidden>
+
+    <div class="report-header">
+      <div class="score-block">
+        <span class="score-label">engagement readout</span>
+        <span class="score-number" id="scoreNumber">—</span>
+        <span class="score-of">/ 100</span>
+      </div>
+      <div class="stats-grid" id="statsGrid"></div>
+    </div>
+
+    <div class="report-body">
+      <div class="panel extracted-panel">
+        <h2 class="panel-title">Extracted text <span class="panel-sub" id="extractionMethod"></span></h2>
+        <div class="readout" id="readoutText"></div>
+      </div>
+
+      <div class="panel notes-panel">
+        <h2 class="panel-title">Margin notes</h2>
+        <div class="notes-list" id="notesList"></div>
+      </div>
+    </div>
+
+    <button class="reset-btn" id="resetBtn">Scan another</button>
+  </section>
+
+  <section class="error-panel" id="errorPanel" hidden>
+    <p id="errorText"></p>
+    <button class="reset-btn" id="errorResetBtn">Try again</button>
+  </section>
+
+</main>
+
+<footer class="footer">
+  <p>Text extraction runs locally via pdf-parse and Tesseract OCR. Suggestions are rule-based — no data leaves this server.</p>
+</footer>
+
+<script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+node_modules/
+uploads/*
+!uploads/.gitkeep
+.env
+.env.local
+dist/
+.next/
+out/
+.vscode/
+.idea/
+*.log
+.DS_Store
