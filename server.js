@@ -1,15 +1,43 @@
 const express = require("express");
 const cors = require("cors");
 const multer = require("multer");
+const session = require("express-session");
 const path = require("path");
 const fs = require("fs");
 const pdfjsLib = require("pdfjs-dist/legacy/build/pdf.js");
 const { createWorker } = require("tesseract.js");
 
+const authLib = require("./lib/auth");
+const historyLib = require("./lib/history");
+
 const app = express();
 const PORT = process.env.PORT || 3000;
+const IS_PROD = process.env.NODE_ENV === "production";
 
-app.use(cors());
+if (!process.env.SESSION_SECRET) {
+  console.warn(
+    "[warn] SESSION_SECRET is not set. Using a generated one-off secret, which means everyone " +
+      "will be logged out on restart. Set SESSION_SECRET in your environment for real deployments."
+  );
+}
+
+app.use(cors({ origin: true, credentials: true }));
+app.use(express.json());
+app.use(
+  session({
+    name: "scanline.sid",
+    secret: process.env.SESSION_SECRET || require("crypto").randomBytes(32).toString("hex"),
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: IS_PROD, // requires HTTPS in production
+      maxAge: 1000 * 60 * 60 * 24 * 14, // 14 days
+    },
+  })
+);
+app.use(authLib.attachUser);
 app.use(express.static(path.join(__dirname, "public")));
 
 // --- Upload handling -------------------------------------------------
@@ -257,7 +285,62 @@ function analyzeEngagement(text) {
   };
 }
 
-// --- Routes -------------------------------------------------------------
+// --- Auth routes ----------------------------------------------------------
+
+app.post("/api/auth/signup", async (req, res) => {
+  try {
+    const user = await authLib.signup(req.body || {});
+    req.session.regenerate((err) => {
+      if (err) return res.status(500).json({ error: "Could not start session." });
+      req.session.userId = user.id;
+      res.status(201).json({ user });
+    });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message || "Signup failed." });
+  }
+});
+
+app.post("/api/auth/login", async (req, res) => {
+  try {
+    const user = await authLib.login({
+      identifier: (req.body || {}).identifier,
+      password: (req.body || {}).password,
+    });
+    req.session.regenerate((err) => {
+      if (err) return res.status(500).json({ error: "Could not start session." });
+      req.session.userId = user.id;
+      res.json({ user });
+    });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message || "Login failed." });
+  }
+});
+
+app.post("/api/auth/logout", (req, res) => {
+  req.session.destroy(() => {
+    res.clearCookie("scanline.sid");
+    res.json({ ok: true });
+  });
+});
+
+app.get("/api/auth/me", (req, res) => {
+  res.json({ user: req.user });
+});
+
+// --- History routes ---------------------------------------------------
+
+app.get("/api/history", authLib.requireAuth, (req, res) => {
+  const entries = historyLib.listForUser(req.user.id, { limit: 100 });
+  res.json({ history: entries });
+});
+
+app.delete("/api/history/:id", authLib.requireAuth, async (req, res) => {
+  const removed = await historyLib.deleteForUser(req.user.id, req.params.id);
+  if (!removed) return res.status(404).json({ error: "History entry not found." });
+  res.json({ ok: true });
+});
+
+// --- Analyze route ------------------------------------------------------
 
 app.post("/api/analyze", (req, res) => {
   upload.single("file")(req, res, async (err) => {
@@ -280,11 +363,24 @@ app.post("/api/analyze", (req, res) => {
 
       const analysis = analyzeEngagement(extraction.text || "");
 
+      let historyEntry = null;
+      if (req.user) {
+        historyEntry = await historyLib.recordScan({
+          userId: req.user.id,
+          filename: req.file.originalname,
+          mimetype: req.file.mimetype,
+          extraction,
+          analysis,
+        });
+      }
+
       res.json({
         filename: req.file.originalname,
         mimetype: req.file.mimetype,
         extraction,
         analysis,
+        savedToHistory: Boolean(historyEntry),
+        historyId: historyEntry ? historyEntry.id : null,
       });
     } catch (e) {
       console.error(e);
