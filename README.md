@@ -1,6 +1,6 @@
 # Scanline — Social Media Content Analyzer
 
-Upload a PDF or a photo of a social media post, and get back the extracted text plus a rule-based engagement report: a score out of 100 and specific, actionable notes (missing hashtags, no call-to-action, sentence length, emoji use, and more).
+Upload a PDF or a photo of a social media post, and get back the extracted text plus a rule-based engagement report: a score out of 100 and specific, actionable notes (missing hashtags, no call-to-action, sentence length, emoji use, and more). Sign in to keep a personal log of every scan; switch between a light "Light Table" theme and a dark "Darkroom" theme any time.
 
 ## Features
 
@@ -8,12 +8,16 @@ Upload a PDF or a photo of a social media post, and get back the extracted text 
 - **PDF text extraction** via `pdfjs-dist`, preserving line/paragraph breaks
 - **OCR for images** via `tesseract.js` (Tesseract compiled to WebAssembly — no external API key needed)
 - **Engagement analysis**: word count, hashtags, mentions, links, emojis, questions, CTA detection, sentence length — turned into a 0–100 score and a list of margin notes
-- **Loading states** during upload/extraction, and clear error messages for bad files or failed extraction
+- **Accounts**: sign up / sign in with a username, email, and password (hashed with `bcryptjs`, never stored or returned in plain text)
+- **Personal scan history**: every analysis run while signed in is saved to your own log — filename, score, stats, and a text preview — viewable and deletable from the "Log" section. Scans run while signed out still work, they just aren't saved.
+- **Light / dark mode**: a "Daylight / Darkroom" toggle in the top bar, persisted in the browser and defaulting to your OS preference on first visit
+- **Loading states** during upload/extraction, and clear error messages for bad files, failed extraction, or auth errors
 - **Custom UI** with all styling in an external stylesheet (`public/style.css`), no CSS frameworks
 
 ## Tech Stack
 
-- **Backend**: Node.js, Express, Multer (uploads)
+- **Backend**: Node.js, Express, Multer (uploads), `express-session` (auth sessions), `bcryptjs` (password hashing)
+- **Storage**: plain JSON files under `data/` (`users.json`, `history.json`) — no database server or native build step required
 - **PDF parsing**: `pdfjs-dist` (text-layer extraction)
 - **OCR**: `tesseract.js`
 - **Frontend**: Plain HTML/CSS/JS — no build step, no framework
@@ -31,31 +35,44 @@ Then open **http://localhost:3000**.
 
 > First-time OCR note: `tesseract.js` downloads its English language model (`eng.traineddata`) from a CDN the first time it runs, and caches it afterward. This requires normal internet access — no API key required, but it won't work in a fully offline/sandboxed environment. PDF text extraction has no such dependency and works fully offline.
 
-No environment variables are required. The server defaults to port `3000`; override with `PORT=xxxx npm start` if needed.
+### Environment variables
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `PORT` | No | Server port. Defaults to `3000`. |
+| `SESSION_SECRET` | Recommended | Signs the login session cookie. If unset, a random secret is generated at boot, which means **everyone is signed out whenever the server restarts**. Set a fixed value (e.g. `openssl rand -hex 32`) for anything beyond local testing. |
+| `NODE_ENV` | No | Set to `production` to mark session cookies `secure` (requires HTTPS). |
 
 ## Project Structure
 
 ```
 social-content-analyzer/
-├── server.js           # Express app: upload route, PDF/OCR extraction, engagement scoring
+├── server.js            # Express app: auth, upload route, PDF/OCR extraction, engagement scoring, history
+├── lib/
+│   ├── db.js             # Minimal JSON-file collection store (users, history)
+│   ├── auth.js            # Signup/login logic, password hashing, session middleware
+│   └── history.js          # Per-user scan log read/write helpers
+├── data/                  # JSON "database" files, created on first run (git-ignore this in real use)
 ├── package.json
 ├── public/
-│   ├── index.html
-│   ├── style.css        # all styling lives here, external to the markup
-│   └── script.js         # drag-and-drop, fetch call, report rendering
-└── uploads/               # temp storage for in-flight uploads (cleared after each request)
+│   ├── index.html          # Markup: dropzone, access panel (auth), readout/report, log
+│   ├── style.css            # All styling — light/dark theme tokens live here
+│   └── script.js              # Theme toggle, auth flow, upload + report rendering, history log
+└── uploads/                  # temp storage for in-flight uploads (cleared after each request)
 ```
 
 ## Approach (~200 words)
 
-I split the app into two small, testable halves. The **backend** (`server.js`) accepts a file via Multer, routes it to one of two extractors — `pdfjs-dist` for PDFs (I initially tried `pdf-parse`, but its bundled PDF.js build failed to parse valid PDFs, so I switched to `pdfjs-dist` directly and rebuilt line-aware text from its text-content items) or `tesseract.js` for images — then runs the extracted text through a deterministic, rule-based analyzer. I chose rules over a hosted LLM call so the tool has no external API dependency for its core scoring logic, is instantly explainable, and answers offline for the PDF path.
+I split the app into small, testable pieces. The **backend** (`server.js`) accepts a file via Multer, routes it to one of two extractors — `pdfjs-dist` for PDFs or `tesseract.js` for images — then runs the extracted text through a deterministic, rule-based analyzer. Auth and history are deliberately dependency-light: `express-session` for cookies, `bcryptjs` for hashing, and a hand-rolled JSON-file store (`lib/db.js`) instead of a database, so the project still installs and runs anywhere with no native build step or external service. Analyze requests work whether or not you're signed in; a scan is only written to `data/history.json` when a session is present, keeping the core tool usable without an account.
 
-The **frontend** is plain HTML/CSS/JS with no build step, styled entirely through an external stylesheet rather than inline styles or a framework, using a "scanner desk" visual identity — a light-table background, corner-bracket dropzone, and a monospace "readout" panel that highlights hashtags and CTA phrases inline, so the extracted text and the suggestions read like annotations on the same page.
+The **frontend** is plain HTML/CSS/JS with no build step, extending the original "scanner desk" identity: light mode is a paper "Light Table" (warm neutrals, teal accent), dark mode is a "Darkroom" (near-black, amber safelight accent), switched via a physical-feeling rocker toggle that persists to `localStorage`. Sign-in/sign-up live in an "access panel" modal; history renders as a stack of log cards.
 
-Error handling covers unsupported file types, oversized files, empty extraction, and OCR worker failures — the last of these required patching `tesseract.js`'s default error behavior, which otherwise crashes the Node process rather than rejecting the request.
+Error handling covers unsupported file types, oversized files, empty extraction, OCR worker failures, duplicate accounts, and invalid credentials.
 
 ## Known Limitations
 
 - OCR accuracy depends on image quality/resolution — very low-res or heavily stylized text may extract poorly.
 - The engagement "score" is a heuristic, not a trained model — it's meant to surface clear, explainable signals rather than predict actual reach.
 - Large scanned PDFs (image-only, no text layer) are not run through OCR automatically in this version — only the PDF's text layer is read.
+- The JSON-file store and `express-session`'s default in-memory session store are fine for local use or a single small server, but won't scale across multiple processes/instances — swap in a real database and a shared session store (e.g. Redis) before deploying that way.
+- There's no password-reset flow yet; a forgotten password currently means creating a new account.
