@@ -1,7 +1,7 @@
 {
   "name": "social-media-content-analyzer",
-  "version": "1.0.0",
-  "description": "Upload PDFs or scanned images, extract text (PDF parsing + OCR), and get engagement improvement suggestions.",
+  "version": "2.0.0",
+  "description": "Upload PDFs or scanned images, extract text (PDF parsing + OCR), get engagement improvement suggestions, and keep a personal log of past scans behind sign in.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -9,8 +9,10 @@
   },
   "license": "MIT",
   "dependencies": {
+    "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "express": "^4.19.2",
+    "express-session": "^1.18.0",
     "multer": "^2.0.1",
     "pdfjs-dist": "^3.11.174",
     "tesseract.js": "^5.1.1"
